@@ -1,0 +1,761 @@
+{
+  "name": "AI Job Application Automation - CV & Cover Letter",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "86a772f2-8197-4966-85cc-59bc4454eca4",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cv-text",
+              "name": "cv_text",
+              "value": "=# [Your Name]\n## AI/ML Engineer | Automation Specialist\n\n### Professional Summary\nExperienced AI/ML Engineer with 5+ years building intelligent automation systems, workflow orchestration platforms, and AI agents. Expert in LangChain, n8n, OpenAI APIs, and full-stack development. Proven track record of architecting scalable solutions and leading technical teams.\n\n### Technical Skills\n- **AI/ML**: LangChain, OpenAI API, GPT-4, Vector Databases, RAG Systems\n- **Automation**: n8n, Zapier, Make, Custom Workflow Engines\n- **Languages**: Python, JavaScript/TypeScript, Node.js, SQL\n- **Frameworks**: React, Next.js, FastAPI, Express\n- **Tools**: Docker, Git, PostgreSQL, Redis, AWS\n\n### Professional Experience\n\n**Senior AI Engineer** | TechCorp | 2022-Present\n- Built AI-powered workflow automation platform serving 10k+ users\n- Designed and implemented LangChain-based agent systems\n- Reduced manual processing time by 80% through intelligent automation\n- Led team of 5 engineers in developing microservices architecture\n\n**Automation Engineer** | StartupXYZ | 2020-2022\n- Developed custom n8n nodes and integrations for enterprise clients\n- Created AI agents for customer support, reducing response time by 60%\n- Implemented CI/CD pipelines and automated deployment workflows\n\n### Education\n**BS Computer Science** | University Name | 2019\n\n### Certifications\n- AWS Certified Solutions Architect\n- OpenAI API Specialist",
+              "type": "string"
+            },
+            {
+              "id": "cv-public-url",
+              "name": "cv_public_url",
+              "value": "https://drive.google.com/file/d/YOUR_CV_FILE_ID/view?usp=sharing",
+              "type": "string"
+            },
+            {
+              "id": "cover-letter-template-id",
+              "name": "cover_letter_template_docId",
+              "value": "={{$env.COVER_LETTER_TEMPLATE_ID}}",
+              "type": "string"
+            },
+            {
+              "id": "search-url",
+              "name": "search_url",
+              "value": "https://www.linkedin.com/jobs/search/?currentJobId=3943890532&f_TPR=r604800&geoId=103644278&keywords=ai%20automation&location=United%20States&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD",
+              "type": "string"
+            },
+            {
+              "id": "min-score",
+              "name": "min_relevance_score",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "email-sender",
+              "name": "email_sender",
+              "value": "={{$env.GMAIL_SENDER_EMAIL}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03d6ac90-f024-4bfd-bd95-1edd5e6cb707",
+      "name": "Set: CV Text & Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get"
+      },
+      "id": "9e8df7f3-817e-4c58-ad07-b5f3800d46a0",
+      "name": "Fetch Cover Letter Template",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "6efb643f-9c6d-4d02-81d6-db740f78a986",
+      "name": "Scrape LinkedIn Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c93e3eab-9fc5-491a-a10b-af5872879351",
+      "name": "Logger: Jobs Scraped",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        624,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "messages": {
+          "values": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "a2f39770-b8e0-486f-8298-8da193438b63",
+      "name": "Filter Jobs with AI",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        848,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI JSON response and filter\nconst items = [];\n\nfor (const item of $input.all()) {\n  try {\n    let response = item.json.text || item.json.message?.content || item.json;\n    \n    // Extract JSON if wrapped in markdown code blocks\n    if (typeof response === 'string') {\n      const jsonMatch = response.match(/```json\\s*([\\s\\S]*?)```/) || response.match(/\\[\\s*{[\\s\\S]*}\\s*\\]/);\n      if (jsonMatch) {\n        response = jsonMatch[1] || jsonMatch[0];\n      }\n      response = JSON.parse(response);\n    }\n    \n    // Handle both array and single object responses\n    const jobs = Array.isArray(response) ? response : [response];\n    \n    for (const job of jobs) {\n      // Get minimum score threshold\n      const minScore = $('Set: CV Text & Config').item.json.min_relevance_score || 0.7;\n      \n      if (job.passed === true && job.score >= minScore) {\n        // Merge with original job data\n        const originalJob = $('Scrape LinkedIn Jobs').all().find(j => \n          j.json.id === job.jobId || j.json.title === job.title\n        );\n        \n        items.push({\n          json: {\n            ...originalJob?.json,\n            ...job,\n            ai_filtered: true,\n            filtered_at: new Date().toISOString()\n          }\n        });\n      }\n    }\n  } catch (error) {\n    console.error('Error parsing AI response:', error);\n    continue;\n  }\n}\n\nreturn items;"
+      },
+      "id": "e08798c9-1605-4d13-9755-053a24564ace",
+      "name": "Parse & Filter AI Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "filter-company-website",
+              "leftValue": "={{$json.companyWebsite}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "filter-passed",
+              "leftValue": "={{$json.passed}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "34ce22ae-1d7a-420a-b7a2-69f045b6a88b",
+      "name": "Filter: Passed & Has Website",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c6a5310c-462b-4e88-803f-ccd6da02cfc2",
+      "name": "Logger: Jobs Filtered",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": 4
+      },
+      "id": "67f23abc-de26-45ed-aa67-75523152983b",
+      "name": "Limit Applications",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "messages": {
+          "values": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "940b742f-2b95-4335-ba2c-5a0dbb275a1f",
+      "name": "Rewrite Cover Letter",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1680,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract markdown from OpenAI response\nfor (const item of $input.all()) {\n  let markdown = item.json.text || item.json.message?.content || item.json.output || '';\n  \n  // Remove code block markers if present\n  markdown = markdown.replace(/```markdown\\s*/g, '').replace(/```\\s*$/g, '').trim();\n  \n  item.json.cover_letter_markdown = markdown;\n}\n\nreturn $input.all();"
+      },
+      "id": "765d0395-a5f6-4fce-bacb-83f9b81356b4",
+      "name": "Extract Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{$json.cover_letter_markdown}}",
+        "options": {}
+      },
+      "id": "25b69411-4bc6-438d-82b2-b62b03471e63",
+      "name": "Convert to HTML",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "title": "=Cover Letter - {{$json.company}} - {{$json.title}}"
+      },
+      "id": "5311efbf-05f4-4262-9b9b-dc304983028f",
+      "name": "Create Cover Letter Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [
+        2288,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$json.documentId}}"
+        },
+        "permissionsUi": {
+          "permissionsValues": {}
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2480,
+        0
+      ],
+      "id": "28cff48b-404e-47a3-a891-fee339867f26",
+      "name": "Share Cover Letter (Public)"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/upload/drive/v3/files/{{$json.documentId}}?uploadType=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "text/html"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{$('Convert to HTML').item.json.html}}",
+        "options": {}
+      },
+      "id": "99a13c13-4726-41e7-b2a9-31924abca7f9",
+      "name": "Add HTML to Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2688,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cover-letter-url",
+              "name": "cover_letter_url",
+              "value": "=https://docs.google.com/document/d/{{$json.documentId}}/edit",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8fa8627a-756b-4a5d-b15c-528e756bdd04",
+      "name": "Build Doc URLs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anymailfinder.com/v5.0/search/decision-maker.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "62f0c750-5699-4d47-b396-7be715a77ea8",
+      "name": "Find Decision Maker Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3088,
+        0
+      ],
+      "continueOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "email-field",
+              "name": "contact_email",
+              "value": "={{$json.email || '[EMAIL_NEEDED]'}}",
+              "type": "string"
+            },
+            {
+              "id": "first-name",
+              "name": "contact_first_name",
+              "value": "={{$json.first_name || 'Hiring Manager'}}",
+              "type": "string"
+            },
+            {
+              "id": "needs-contact-tag",
+              "name": "needs_manual_contact",
+              "value": "={{!$json.email}}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9ee3186b-c8f8-4328-858d-544475d44ea3",
+      "name": "Prepare Email Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "createDraft"
+      },
+      "id": "131bc8cf-c480-47ab-9f30-3d3e4e3d8b03",
+      "name": "Create Gmail Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3488,
+        0
+      ],
+      "webhookId": "d9e19c88-0450-49fa-b24b-f148f46e0c17"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "needs-manual-contact",
+              "leftValue": "={{$json.needs_manual_contact}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a81e6eb4-c54b-42ce-a3f0-934c28208910",
+      "name": "Check: Needs Manual Contact",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        3488,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{$('Create Gmail Draft').item.json.id}}",
+        "labelIds": [
+          "NeedsContact"
+        ]
+      },
+      "id": "fa1223cd-505a-411f-8638-4fc457966487",
+      "name": "Label: Needs Contact",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3680,
+        208
+      ],
+      "webhookId": "0edb0fb8-9ca3-443f-960c-b5e878205527"
+    },
+    {
+      "parameters": {},
+      "id": "95a53f5d-e57d-49e9-a6d0-9c5bc4545572",
+      "name": "Logger: Workflow Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3680,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Set: CV Text & Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: CV Text & Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Cover Letter Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Cover Letter Template": {
+      "main": [
+        [
+          {
+            "node": "Scrape LinkedIn Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape LinkedIn Jobs": {
+      "main": [
+        [
+          {
+            "node": "Logger: Jobs Scraped",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter Jobs with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Jobs with AI": {
+      "main": [
+        [
+          {
+            "node": "Parse & Filter AI Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Filter AI Results": {
+      "main": [
+        [
+          {
+            "node": "Filter: Passed & Has Website",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Passed & Has Website": {
+      "main": [
+        [
+          {
+            "node": "Logger: Jobs Filtered",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Limit Applications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit Applications": {
+      "main": [
+        [
+          {
+            "node": "Rewrite Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "Extract Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Markdown": {
+      "main": [
+        [
+          {
+            "node": "Convert to HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to HTML": {
+      "main": [
+        [
+          {
+            "node": "Create Cover Letter Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Cover Letter Doc": {
+      "main": [
+        [
+          {
+            "node": "Share Cover Letter (Public)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share Cover Letter (Public)": {
+      "main": [
+        [
+          {
+            "node": "Add HTML to Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add HTML to Doc": {
+      "main": [
+        [
+          {
+            "node": "Build Doc URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Doc URLs": {
+      "main": [
+        [
+          {
+            "node": "Find Decision Maker Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Decision Maker Email": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Data": {
+      "main": [
+        [
+          {
+            "node": "Create Gmail Draft",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check: Needs Manual Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Gmail Draft": {
+      "main": [
+        [
+          {
+            "node": "Logger: Workflow Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Needs Manual Contact": {
+      "main": [
+        [
+          {
+            "node": "Label: Needs Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "",
+  "meta": {
+    "instanceId": "77e5deaa3b06a6d43b14090734d1fcc72d2883c7fd812f5a22ff5e95c7299035"
+  },
+  "tags": [
+    {
+      "name": "AI",
+      "id": "UU2ACtQUTDpgbAP5",
+      "createdAt": "2025-10-10T06:46:35.233Z",
+      "updatedAt": "2025-10-10T06:46:35.233Z"
+    },
+    {
+      "name": "Automation",
+      "id": "p0jVrhrV94vVxQOZ",
+      "createdAt": "2025-10-10T06:46:35.495Z",
+      "updatedAt": "2025-10-10T06:46:35.495Z"
+    },
+    {
+      "name": "Job Application",
+      "id": "vsAN9bdLyunHO4bS",
+      "createdAt": "2025-10-10T06:46:35.750Z",
+      "updatedAt": "2025-10-10T06:46:35.750Z"
+    },
+    {
+      "name": "Cover Letter",
+      "id": "b6DI7uASOjD8t9a1",
+      "createdAt": "2025-10-10T06:46:34.726Z",
+      "updatedAt": "2025-10-10T06:46:34.726Z"
+    }
+  ]
+}
