@@ -437,6 +437,153 @@
     },
     {
       "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "applied-at",
+              "name": "applied_at",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b27f4a0e-3a33-41d5-9e7d-13e92065cda9",
+      "name": "Get Application Timestamp",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3680,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{'https://api.airtable.com/v0/' + $env.AIRTABLE_BASE_ID + '/' + encodeURIComponent('Job Applications')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $env.AIRTABLE_TOKEN}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{'source_id = \"' + ($json.jobId || $json.id) + '\"'}}"
+            },
+            {
+              "name": "maxRecords",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "responseFormat": "json",
+          "dataPropertyName": "airtable_search"
+        }
+      },
+      "id": "2cf8517f-6ad1-43de-9f38-688f4e5c1e06",
+      "name": "Airtable: Search Existing Application",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3888,
+        -80
+      ],
+      "continueOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-existing-record",
+              "leftValue": "={{($json.airtable_search?.records?.length || 0)}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "larger"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cbbd88b1-ef0b-4e3e-81cb-68d8d0849dd5",
+      "name": "Check: Application Already Logged?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://api.airtable.com/v0/' + $env.AIRTABLE_BASE_ID + '/' + encodeURIComponent('Job Applications')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $env.AIRTABLE_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{({ fields: { job_title: $json.title, company: $json.company, contact_email: $json.contact_email || '', coverletter_url: $json.cover_letter_url, status: $json.application_status || 'Applied', applied_at: $json.applied_at, source_id: $json.jobId || $json.id } })}}",
+        "options": {
+          "responseFormat": "json",
+          "dataPropertyName": "airtable_create"
+        }
+      },
+      "id": "0d1a1139-604e-4c5f-8b0b-02d66786446c",
+      "name": "Airtable: Create Application Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4288,
+        -80
+      ],
+      "continueOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "unit": "milliseconds",
+        "value": 200
+      },
+      "id": "8a523ab1-c942-4f8e-aac9-7a049e17a3e3",
+      "name": "Wait: Airtable Cooldown",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        4480,
+        -80
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -492,7 +639,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        3680,
+        4688,
         0
       ]
     }
@@ -702,6 +849,68 @@
       ]
     },
     "Create Gmail Draft": {
+      "main": [
+        [
+          {
+            "node": "Get Application Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Application Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Airtable: Search Existing Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable: Search Existing Application": {
+      "main": [
+        [
+          {
+            "node": "Check: Application Already Logged?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Application Already Logged?": {
+      "main": [
+        [
+          {
+            "node": "Logger: Workflow Complete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Airtable: Create Application Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable: Create Application Record": {
+      "main": [
+        [
+          {
+            "node": "Wait: Airtable Cooldown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: Airtable Cooldown": {
       "main": [
         [
           {
