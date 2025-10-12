@@ -361,30 +361,154 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.anymailfinder.com/v5.0/search/decision-maker.json",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {}
+        "assignments": {
+          "assignments": [
+            {
+              "id": "normalized-website",
+              "name": "normalized_company_website",
+              "value": "={{(() => { const raw = $json.companyWebsite || ''; if (!raw) { return ''; } const normalized = raw.match(/^https?:\\/\\//) ? raw : `https://${raw}`; return normalized.replace(/\\/$/, ''); })()}}",
+              "type": "string"
+            },
+            {
+              "id": "company-domain",
+              "name": "company_domain",
+              "value": "={{(() => { const raw = ($json.companyWebsite || '').replace(/^https?:\\/\\//, ''); const parts = raw ? raw.split('/') : []; return (parts.length ? parts[0] : '').toLowerCase(); })()}}",
+              "type": "string"
+            },
+            {
+              "id": "email-search-urls",
+              "name": "email_search_urls",
+              "value": "={{(() => { const website = $json.companyWebsite || ''; if (!website) { return JSON.stringify([]); } const normalized = website.match(/^https?:\\/\\//) ? website : `https://${website}`; const trimmed = normalized.replace(/\\/$/, ''); const base = (() => { try { const url = new URL(trimmed); return `${url.protocol}//${url.host}`; } catch (error) { return trimmed; } })(); const candidates = [base, `${base}/careers`, `${base}/team`, `${base}/people`, `${base}/about`, `${base}/contact`, `${base}/company`]; return JSON.stringify(Array.from(new Set(candidates.filter(Boolean)))); })()}}",
+              "type": "string"
+            },
+            {
+              "id": "email-search-context",
+              "name": "email_search_context",
+              "value": "={{(() => { const raw = ($json.companyWebsite || '').replace(/^https?:\\/\\//, ''); const parts = raw ? raw.split('/') : []; const domain = (parts.length ? parts[0] : '').toLowerCase(); return JSON.stringify({ company: $json.company, title: $json.title, location: $json.location, domain, jobUrl: $json.jobUrl || $json.url || $json.link || $json.jobUrlCleaned || '', description: $json.description || '' }); })()}}",
+              "type": "string"
+            }
           ]
         },
         "options": {
-          "timeout": 30000
+          "keepOnlySet": false
         }
       },
-      "id": "62f0c750-5699-4d47-b396-7be715a77ea8",
-      "name": "Find Decision Maker Email",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "id": "4efb5d86-9cf7-4e91-87c5-2d385f588f60",
+      "name": "Set: Email Search Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [
         3088,
-        0
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst urls = (() => { try { return JSON.parse(item.json.email_search_urls || '[]'); } catch (error) { return []; } })();\nconst headers = {\n  'User-Agent': $env.USER_AGENT || 'Mozilla/5.0 (compatible; JobApplicationBot/1.0; +https://example.com/bot)',\n  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'\n};\nconst fetched = [];\nfor (const url of urls) {\n  if (!url) {\n    continue;\n  }\n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'GET',\n      url,\n      headers,\n      timeout: 10000,\n      followRedirect: true,\n      maxRedirects: 3,\n      returnFullResponse: true,\n      rejectUnauthorized: false\n    });\n    const body = typeof response.body === 'string' ? response.body : JSON.stringify(response.body);\n    fetched.push({\n      url,\n      status: response.statusCode || response.status || 200,\n      content_preview: body.slice(0, 6000)\n    });\n  } catch (error) {\n    fetched.push({\n      url,\n      status: error.statusCode || error.status || 0,\n      error: error.message || 'Request failed'\n    });\n  }\n}\nitem.json.email_search_urls = urls;\nitem.json.fetched_pages = fetched;\nitem.json.crawled_at = new Date().toISOString();\nreturn [item];"
+      },
+      "id": "b5a51090-bf45-4a42-b71c-59dbaf66a948",
+      "name": "Fetch Company Pages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3296,
+        -160
       ],
-      "continueOnFail": true,
-      "onError": "continueErrorOutput"
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst domain = (item.json.company_domain || '').toLowerCase();\nconst pages = Array.isArray(item.json.fetched_pages) ? item.json.fetched_pages : [];\nconst emails = new Map();\nif (domain) {\n  const domainPattern = domain.replace(/\\./g, '\\\\.');\n  const regex = new RegExp(`[a-zA-Z0-9._%+-]+@${domainPattern}`, 'gi');\n  for (const page of pages) {\n    const content = page?.content_preview || '';\n    let match;\n    while ((match = regex.exec(content)) !== null) {\n      const email = match[0].toLowerCase();\n      if (!emails.has(email)) {\n        emails.set(email, {\n          email,\n          source_url: page?.url || item.json.companyWebsite || '',\n          source_status: page?.status || null,\n          context_snippet: content.slice(Math.max(regex.lastIndex - 120, 0), regex.lastIndex + 120)\n        });\n      }\n    }\n  }\n}\nitem.json.extracted_emails = Array.from(emails.values());\nitem.json.emails_found_count = item.json.extracted_emails.length;\nitem.json.extraction_regex_domain = domain;\nreturn [item];"
+      },
+      "id": "b7496c57-707f-4bff-a8d7-8b7f4d60c975",
+      "name": "Code: Extract Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3504,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "messages": {
+          "values": [
+            {
+              "type": "system",
+              "text": "You are an expert talent sourcer. Choose the best email for contacting the HR, people ops, recruiting, or talent acquisition team at a company. Only use the emails that are provided. If none are suitable, explain why and state that no direct email was found. Never invent email addresses. Respond in valid JSON matching this schema: {\\\"best_contact\\\": {\\\"email\\\": string | null, \\\"first_name\\\": string | null, \\\"last_name\\\": string | null, \\\"title\\\": string | null, \\\"confidence\\\": number between 0 and 1, \\\"reason\\\": string, \\\"source_url\\\": string | null, \\\"method\\\": 'found-on-page' | 'inferred-pattern' | 'not-found'}, \\\"ranked_contacts\\\": array of objects with the same fields as best_contact, \\\"notes\\\": string }"
+            },
+            {
+              "type": "user",
+              "text": "Company: {{$json.company || 'Unknown'}}\nRole: {{$json.title || 'Unknown'}}\nDomain: {{$json.company_domain || ''}}\nJob Context: {{JSON.parse($json.email_search_context || '{}').description || ''}}\nExtracted Emails: {{JSON.stringify($json.extracted_emails || [])}}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "1a3b3f5f-8a3d-4de4-92e8-9df2bced8ede",
+      "name": "OpenAI: Identify HR Contact",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        3712,
+        -160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nfor (const item of $input.all()) {\n  const base = { ...item.json };\n  const raw = base.text || base.message?.content || base.output || base.response || base.result || base;\n  let parsed = null;\n  if (typeof raw === 'string') {\n    const jsonMatch = raw.match(/```json\\s*([\\s\\S]*?)```/i);\n    const payload = jsonMatch ? jsonMatch[1] : raw;\n    try {\n      parsed = JSON.parse(payload);\n    } catch (error) {\n      try {\n        parsed = JSON.parse(raw);\n      } catch (innerError) {\n        parsed = null;\n      }\n    }\n  } else if (raw && typeof raw === 'object') {\n    parsed = raw;\n  }\n  const extractedEmails = base.extracted_emails || [];\n  const best = parsed?.best_contact || (Array.isArray(parsed?.ranked_contacts) ? parsed.ranked_contacts[0] : null) || parsed || {};\n  const email = (best?.email || '').toLowerCase();\n  const firstName = best?.first_name || (best?.name ? best.name.split(' ')[0] : '') || '';\n  const lastName = best?.last_name || (best?.name ? best.name.split(' ').slice(1).join(' ') : '');\n  const confidence = typeof best?.confidence === 'number' ? best.confidence : (typeof best?.confidence_score === 'number' ? best.confidence_score : (email ? 0.75 : 0));\n  const method = best?.method || (email ? 'found-on-page' : 'not-found');\n  const sourceUrl = best?.source_url || (extractedEmails.find((entry) => entry.email === email)?.source_url) || base.normalized_company_website || base.companyWebsite || '';\n  const formatted = {\n    ...base,\n    gpt_raw_response: parsed || raw || null,\n    gpt_reasoning: parsed?.notes || parsed?.reason || best?.reason || '',\n    ranked_contacts: Array.isArray(parsed?.ranked_contacts) ? parsed.ranked_contacts : [],\n    email: email || '',\n    first_name: firstName || '',\n    last_name: lastName || '',\n    contact_email: email || '',\n    contact_first_name: firstName || (email ? 'Hiring Manager' : ''),\n    contact_last_name: lastName || '',\n    contact_title: best?.title || '',\n    confidence_score: Math.max(0, Math.min(1, confidence || 0)),\n    extraction_method: method,\n    source_url: sourceUrl,\n    needs_manual_contact: !email,\n    needs_manual_review: confidence < 0.6,\n    review_reason: confidence < 0.6 ? 'Low confidence score - verify before sending' : '',\n    emails_found: extractedEmails\n  };\n  if (!formatted.contact_first_name) {\n    formatted.contact_first_name = formatted.first_name || 'Hiring Manager';\n  }\n  if (!formatted.first_name) {\n    formatted.first_name = formatted.contact_first_name || 'Hiring Manager';\n  }\n  if (!formatted.contact_title) {\n    formatted.contact_title = email ? 'People Team' : '';\n  }\n  if (!formatted.review_reason) {\n    delete formatted.review_reason;\n  }\n  results.push({ json: formatted });\n}\nreturn results;"
+      },
+      "id": "6c8da191-5e12-4a3a-8e84-7e0c46052bc7",
+      "name": "Code: Format Email Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3920,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.contact_email}}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "3a0ffb28-4d60-4c74-9392-f00fc23fd241",
+      "name": "If: No Email Found - Try Fallback",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4128,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nfor (const item of $input.all()) {\n  const base = { ...item.json };\n  const domain = (() => {\n    if (base.company_domain) return base.company_domain.toLowerCase();\n    const raw = (base.companyWebsite || '').replace(/^https?:\\/\\//, '');\n    const parts = raw ? raw.split('/') : [];\n    return (parts.length ? parts[0] : '').toLowerCase();\n  })();\n  const normalizedSite = base.normalized_company_website || (domain ? `https://${domain}` : '');\n  const localPartCandidates = ['hr', 'people', 'talent', 'recruiting'];\n  let inferredEmail = '';\n  if (domain) {\n    inferredEmail = `${localPartCandidates[0]}@${domain}`;\n  }\n  const fallback = {\n    ...base,\n    email: inferredEmail || '',\n    contact_email: inferredEmail || '',\n    contact_first_name: 'Hiring Manager',\n    contact_last_name: '',\n    contact_title: 'HR/People Team',\n    confidence_score: inferredEmail ? 0.5 : 0,\n    extraction_method: inferredEmail ? 'inferred-pattern' : 'not-found',\n    source_url: normalizedSite || base.companyWebsite || '',\n    needs_manual_contact: !inferredEmail,\n    needs_manual_review: true,\n    review_reason: inferredEmail ? 'Email inferred from company domain - verify before sending' : 'Email unavailable - manual lookup required',\n    fallback_generated_at: new Date().toISOString()\n  };\n  if (!fallback.email) {\n    fallback.email = '[EMAIL_NEEDED]';\n    fallback.contact_email = '[EMAIL_NEEDED]';\n  }\n  if (!fallback.first_name) {\n    fallback.first_name = 'Hiring Manager';\n  }\n  fallback.emails_found = base.emails_found || base.extracted_emails || [];\n  results.push({ json: fallback });\n}\nreturn results;"
+      },
+      "id": "b80c1f29-3c6d-4e72-9dfd-03bc0c80b794",
+      "name": "Code: Infer Email Pattern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4336,
+        -336
+      ]
     },
     {
       "parameters": {
@@ -393,20 +517,56 @@
             {
               "id": "email-field",
               "name": "contact_email",
-              "value": "={{$json.email || '[EMAIL_NEEDED]'}}",
+              "value": "={{$json.contact_email || $json.email || '[EMAIL_NEEDED]'}}",
               "type": "string"
             },
             {
               "id": "first-name",
               "name": "contact_first_name",
-              "value": "={{$json.first_name || 'Hiring Manager'}}",
+              "value": "={{$json.contact_first_name || $json.first_name || 'Hiring Manager'}}",
               "type": "string"
             },
             {
               "id": "needs-contact-tag",
               "name": "needs_manual_contact",
-              "value": "={{!$json.email}}",
+              "value": "={{$json.needs_manual_contact !== undefined ? $json.needs_manual_contact : !$json.email}}",
               "type": "boolean"
+            },
+            {
+              "id": "confidence-score",
+              "name": "confidence_score",
+              "value": "={{$json.confidence_score ?? 0}}",
+              "type": "number"
+            },
+            {
+              "id": "contact-title",
+              "name": "contact_title",
+              "value": "={{$json.contact_title || 'Hiring Manager'}}",
+              "type": "string"
+            },
+            {
+              "id": "extraction-method",
+              "name": "extraction_method",
+              "value": "={{$json.extraction_method || 'inferred-pattern'}}",
+              "type": "string"
+            },
+            {
+              "id": "source-url",
+              "name": "source_url",
+              "value": "={{$json.source_url || $json.normalized_company_website || $json.companyWebsite || ''}}",
+              "type": "string"
+            },
+            {
+              "id": "needs-review",
+              "name": "needs_manual_review",
+              "value": "={{$json.needs_manual_review || false}}",
+              "type": "boolean"
+            },
+            {
+              "id": "review-reason",
+              "name": "review_reason",
+              "value": "={{$json.review_reason || ''}}",
+              "type": "string"
             }
           ]
         },
@@ -814,18 +974,7 @@
       "main": [
         [
           {
-            "node": "Find Decision Maker Email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find Decision Maker Email": {
-      "main": [
-        [
-          {
-            "node": "Prepare Email Data",
+            "node": "Set: Email Search Context",
             "type": "main",
             "index": 0
           }
@@ -926,6 +1075,90 @@
         [
           {
             "node": "Label: Needs Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Email Search Context": {
+      "main": [
+        [
+          {
+            "node": "Fetch Company Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Company Pages": {
+      "main": [
+        [
+          {
+            "node": "Code: Extract Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Extract Emails": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Identify HR Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Identify HR Contact": {
+      "main": [
+        [
+          {
+            "node": "Code: Format Email Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format Email Output": {
+      "main": [
+        [
+          {
+            "node": "If: No Email Found - Try Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: No Email Found - Try Fallback": {
+      "main": [
+        [
+          {
+            "node": "Code: Infer Email Pattern",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Infer Email Pattern": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Data",
             "type": "main",
             "index": 0
           }
