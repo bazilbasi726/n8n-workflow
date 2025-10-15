@@ -17,21 +17,9 @@
         "assignments": {
           "assignments": [
             {
-              "id": "cv-text",
-              "name": "cv_text",
-              "value": "=# [Your Name]\n## AI/ML Engineer | Automation Specialist\n\n### Professional Summary\nExperienced AI/ML Engineer with 5+ years building intelligent automation systems, workflow orchestration platforms, and AI agents. Expert in LangChain, n8n, OpenAI APIs, and full-stack development. Proven track record of architecting scalable solutions and leading technical teams.\n\n### Technical Skills\n- **AI/ML**: LangChain, OpenAI API, GPT-4, Vector Databases, RAG Systems\n- **Automation**: n8n, Zapier, Make, Custom Workflow Engines\n- **Languages**: Python, JavaScript/TypeScript, Node.js, SQL\n- **Frameworks**: React, Next.js, FastAPI, Express\n- **Tools**: Docker, Git, PostgreSQL, Redis, AWS\n\n### Professional Experience\n\n**Senior AI Engineer** | TechCorp | 2022-Present\n- Built AI-powered workflow automation platform serving 10k+ users\n- Designed and implemented LangChain-based agent systems\n- Reduced manual processing time by 80% through intelligent automation\n- Led team of 5 engineers in developing microservices architecture\n\n**Automation Engineer** | StartupXYZ | 2020-2022\n- Developed custom n8n nodes and integrations for enterprise clients\n- Created AI agents for customer support, reducing response time by 60%\n- Implemented CI/CD pipelines and automated deployment workflows\n\n### Education\n**BS Computer Science** | University Name | 2019\n\n### Certifications\n- AWS Certified Solutions Architect\n- OpenAI API Specialist",
-              "type": "string"
-            },
-            {
               "id": "cv-public-url",
               "name": "cv_public_url",
               "value": "https://drive.google.com/file/d/YOUR_CV_FILE_ID/view?usp=sharing",
-              "type": "string"
-            },
-            {
-              "id": "cover-letter-template-id",
-              "name": "cover_letter_template_docId",
-              "value": "={{$env.COVER_LETTER_TEMPLATE_ID}}",
               "type": "string"
             },
             {
@@ -51,6 +39,41 @@
               "name": "email_sender",
               "value": "={{$env.GMAIL_SENDER_EMAIL}}",
               "type": "string"
+            },
+            {
+              "id": "config-preferences",
+              "name": "config",
+              "value": {
+                "jobLevel": "senior",
+                "remotePreference": "remote",
+                "languagePreference": "en",
+                "roleKeywords": [
+                  "automation",
+                  "ai",
+                  "n8n"
+                ],
+                "focusSkills": [
+                  "workflow orchestration",
+                  "integration"
+                ],
+                "locationPreferences": [
+                  "remote",
+                  "europe"
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "id": "cv-file-path",
+              "name": "cv_file_path",
+              "value": "/data/static/CV_BasilJacob_Markdown.txt",
+              "type": "string"
+            },
+            {
+              "id": "template-file-path",
+              "name": "template_file_path",
+              "value": "/data/static/Cover Letter Templates.txt",
+              "type": "string"
             }
           ]
         },
@@ -67,15 +90,69 @@
     },
     {
       "parameters": {
-        "operation": "get"
+        "filePath": "={{$json.cv_file_path}}",
+        "binaryPropertyName": "cvFile"
       },
-      "id": "9e8df7f3-817e-4c58-ad07-b5f3800d46a0",
-      "name": "Fetch Cover Letter Template",
-      "type": "n8n-nodes-base.googleDocs",
+      "id": "a49835ba-3e48-4519-b771-272a636796a2",
+      "name": "Read CV File",
+      "type": "n8n-nodes-base.readBinaryFile",
       "typeVersion": 1,
       "position": [
         400,
-        0
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = []\nfor (const item of $input.all()) {\n  const cloned = { ...item, json: { ...item.json }, binary: item.binary ? { ...item.binary } : undefined };\n  try {\n    const binary = cloned.binary?.cvFile;\n    if (!binary?.data) {\n      throw new Error('CV binary data is missing');\n    }\n    const cvBuffer = Buffer.from(binary.data, 'base64');\n    const cvText = cvBuffer.toString('utf8');\n    cloned.json.cvText = cvText;\n    cloned.json.assets = cloned.json.assets || {};\n    cloned.json.assets.cvFileName = binary.fileName || cloned.json.assets.cvFileName || 'CV_BasilJacob_Markdown.txt';\n    cloned.json.assets.cvLoadedAt = new Date().toISOString();\n    delete cloned.binary?.cvFile;\n  } catch (error) {\n    cloned.json.cvText = cloned.json.cvText || '';\n    cloned.json.assetLoadErrors = cloned.json.assetLoadErrors || [];\n    cloned.json.assetLoadErrors.push({\n      asset: 'cv',\n      message: error.message,\n      timestamp: new Date().toISOString()\n    });\n    delete cloned.binary?.cvFile;\n  }\n  items.push(cloned);\n}\nreturn items;"
+      },
+      "id": "c540ecf3-5e74-43e9-8728-5555bb5fe966",
+      "name": "Extract CV Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "={{$json.template_file_path}}",
+        "binaryPropertyName": "templateFile"
+      },
+      "id": "df16f547-2d7e-4563-a31a-a81cffa0ca63",
+      "name": "Read Template File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        816,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = []\nfor (const item of $input.all()) {\n  const cloned = { ...item, json: { ...item.json }, binary: item.binary ? { ...item.binary } : undefined };\n  try {\n    const binary = cloned.binary?.templateFile;\n    if (!binary?.data) {\n      throw new Error('Template binary data is missing');\n    }\n    const buffer = Buffer.from(binary.data, 'base64');\n    const raw = buffer.toString('utf8');\n    cloned.json.templatesRaw = raw;\n    cloned.json.assets = cloned.json.assets || {};\n    cloned.json.assets.templateFileName = binary.fileName || cloned.json.assets.templateFileName || 'Cover Letter Templates.txt';\n    cloned.json.assets.templateLoadedAt = new Date().toISOString();\n    delete cloned.binary?.templateFile;\n  } catch (error) {\n    cloned.json.templatesRaw = cloned.json.templatesRaw || '';\n    cloned.json.assetLoadErrors = cloned.json.assetLoadErrors || [];\n    cloned.json.assetLoadErrors.push({\n      asset: 'templates',\n      message: error.message,\n      timestamp: new Date().toISOString()\n    });\n    delete cloned.binary?.templateFile;\n  }\n  items.push(cloned);\n}\nreturn items;"
+      },
+      "id": "425fbd4c-24ed-4ff2-be75-5a373258d668",
+      "name": "Extract Template Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalise(text = '') {\n  return text.toString().trim();\n}\n\nfunction splitTemplates(raw) {\n  if (!raw) {\n    return [];\n  }\n  const sanitized = raw.replace(/\r\n/g, '\n');\n  const delimiters = [\n    /\n-{3,}\\s*\n/g,\n    /\n=+\\s*\n/g,\n    /\n\\*{3,}\\s*\n/g,\n  ];\n  let sections = [];\n  for (const delimiter of delimiters) {\n    sections = sanitized.split(delimiter).map(part => part.trim()).filter(Boolean);\n    if (sections.length > 1) {\n      break;\n    }\n  }\n  if (!sections.length) {\n    const fallback = sanitized.split(/\n#\\s+/).map((part, index) => index === 0 ? part.trim() : ('# ' + part.trim()));\n    sections = fallback.filter(Boolean);\n  }\n  if (!sections.length && sanitized.trim()) {\n    sections = [sanitized.trim()];\n  }\n  return sections;\n}\n\nfunction extractMetadata(section, index) {\n  const lines = section.split('\n');\n  const metadata = {\n    id: index,\n    name: `Template ${index + 1}`,\n    language: 'en',\n    tags: []\n  };\n  const bodyLines = [];\n  for (const line of lines) {\n    const trimmed = line.trim();\n    if (!trimmed && bodyLines.length === 0) {\n      continue;\n    }\n    const [key, ...rest] = trimmed.split(':');\n    if (rest.length && bodyLines.length === 0) {\n      const value = rest.join(':').trim();\n      const normalisedKey = key.toLowerCase();\n      if (['name', 'title'].includes(normalisedKey)) {\n        metadata.name = value || metadata.name;\n        continue;\n      }\n      if (['language', 'lang'].includes(normalisedKey)) {\n        metadata.language = value.toLowerCase() || metadata.language;\n        continue;\n      }\n      if (['tags', 'keywords', 'labels'].includes(normalisedKey)) {\n        metadata.tags = value.split(/[,|]/).map(v => v.trim().toLowerCase()).filter(Boolean);\n        continue;\n      }\n    }\n    bodyLines.push(line);\n  }\n  metadata.body = bodyLines.join('\n').trim();\n  metadata.wordCount = metadata.body ? metadata.body.split(/\\s+/).filter(Boolean).length : 0;\n  return metadata;\n}\n\nconst items = [];\nfor (const item of $input.all()) {\n  const cloned = { ...item, json: { ...item.json } };\n  try {\n    const config = cloned.json.config || {};\n    const rawTemplates = normalise(cloned.json.templatesRaw);\n    const sections = splitTemplates(rawTemplates);\n    const templates = sections.map((section, index) => extractMetadata(section, index));\n    const keywords = new Set();\n    const addKeyword = (value) => {\n      if (!value) return;\n      if (Array.isArray(value)) {\n        value.forEach(addKeyword);\n        return;\n      }\n      normalise(value).split(/[\\s,\\/]+/).forEach(part => {\n        const token = part.trim().toLowerCase();\n        if (token) {\n          keywords.add(token);\n        }\n      });\n    };\n    addKeyword(config.jobLevel);\n    addKeyword(config.remotePreference);\n    addKeyword(config.languagePreference);\n    addKeyword(config.roleKeywords);\n    addKeyword(config.focusSkills);\n    addKeyword(config.locationPreferences);\n    let bestTemplate = templates[0] || { body: cloned.json.templatesRaw || '', language: config.languagePreference || 'en', tags: [], name: 'Default Template', id: 0, wordCount: 0 };\n    let bestScore = -Infinity;\n    for (const template of templates) {\n      let score = 0;\n      const templateLanguage = (template.language || '').toLowerCase();\n      if (config.languagePreference && templateLanguage === normalise(config.languagePreference).toLowerCase()) {\n        score += 25;\n      }\n      if (config.remotePreference && template.tags.includes(normalise(config.remotePreference).toLowerCase())) {\n        score += 15;\n      }\n      for (const keyword of keywords) {\n        if (!keyword) continue;\n        if (template.tags.includes(keyword)) {\n          score += 10;\n        } else if (template.body.toLowerCase().includes(keyword)) {\n          score += 4;\n        }\n      }\n      if (template.wordCount < 120) {\n        score += 2;\n      }\n      if (template.name.toLowerCase().includes('default') || template.tags.includes('general')) {\n        score -= 2;\n      }\n      if (score > bestScore) {\n        bestScore = score;\n        bestTemplate = template;\n      }\n    }\n    if (bestScore <= 0 && templates.length) {\n      bestTemplate = templates[0];\n      bestScore = 0;\n    }\n    if (!bestTemplate.body) {\n      bestTemplate.body = cloned.json.templatesRaw || '';\n    }\n    cloned.json.selectedTemplate = bestTemplate.body;\n    cloned.json.templateSelection = {\n      id: bestTemplate.id,\n      name: bestTemplate.name,\n      language: bestTemplate.language,\n      tags: bestTemplate.tags,\n      score: bestScore,\n      evaluatedTemplates: templates.map(t => ({\n        id: t.id,\n        name: t.name,\n        language: t.language,\n        tags: t.tags,\n        wordCount: t.wordCount\n      })),\n      evaluatedAt: new Date().toISOString()\n    };\n    delete cloned.json.templatesRaw;\n  } catch (error) {\n    cloned.json.selectedTemplate = cloned.json.templatesRaw || '';\n    cloned.json.templateSelection = cloned.json.templateSelection || {};\n    cloned.json.templateSelection.error = error.message;\n    cloned.json.templateSelection.evaluatedAt = new Date().toISOString();\n  }\n  items.push(cloned);\n}\nreturn items;"
+      },
+      "id": "b646a166-47e9-4802-a05d-75a91c30823f",
+      "name": "Select Cover Letter Template",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        -80
       ]
     },
     {
@@ -99,7 +176,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        624,
+        1440,
         0
       ]
     },
@@ -821,18 +898,7 @@
       "main": [
         [
           {
-            "node": "Fetch Cover Letter Template",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Cover Letter Template": {
-      "main": [
-        [
-          {
-            "node": "Scrape LinkedIn Jobs",
+            "node": "Read CV File",
             "type": "main",
             "index": 0
           }
@@ -1159,6 +1225,61 @@
         [
           {
             "node": "Prepare Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CV File": {
+      "main": [
+        [
+          {
+            "node": "Extract CV Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV Text": {
+      "main": [
+        [
+          {
+            "node": "Read Template File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Template File": {
+      "main": [
+        [
+          {
+            "node": "Extract Template Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Template Text": {
+      "main": [
+        [
+          {
+            "node": "Select Cover Letter Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Cover Letter Template": {
+      "main": [
+        [
+          {
+            "node": "Scrape LinkedIn Jobs",
             "type": "main",
             "index": 0
           }
